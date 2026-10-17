@@ -118,7 +118,7 @@ that, so the product is built around *explanation*:
 ### Why this split
 
 - **The add-on is thin: it collects facts and renders; it never judges.** All interpretation lives in the
-  backend, where it is unit-tested and can change without redeploying the add-on. Two exceptions are on
+  backend, where it can change without redeploying the add-on. Two exceptions are on
   purpose and stay inside Google: masking (it must happen *before* data leaves) and the mailbox search
   (the backend has no mailbox access, and gets only the one-word conclusion).
 - **A rules engine, not one big function.** `engine/loader.py` discovers every `Rule` subclass in
@@ -289,7 +289,7 @@ trusted, including the user's own settings.**
 |---|---|
 | **Who can call the API** | Google-signed OpenID Connect identity tokens, no shared secret. The backend verifies the RS256 signature against Google's published keys (cached), the issuer, the expiry, the **audience** (the token must have been issued to *this* add-on) and a verified email against a policy (`*`, `*@domain`, or a list). Fails closed: the service won't start without this configuration. |
 | **Hostile email content** | Every field is size-bounded in the add-on *and* in the backend schema; requests over 1 MB are rejected before parsing (Caddy and middleware). Validation errors never echo input back. |
-| **Slow-input attacks (ReDoS)** | Patterns that run on email content are linear. A quadratic HTML-tag pattern (9.6 s of CPU on a crafted 120 KB body) was found in review and fixed (2 ms); regression tests time hostile inputs. |
+| **Slow-input attacks (ReDoS)** | Patterns that run on email content are linear. A quadratic HTML-tag pattern (9.6 s of CPU on a crafted 120 KB body) was found in review and fixed (2 ms). |
 | **Client data (settings, clicks, storage)** | One strict definition of valid in the add-on (`Validation.gs`) and the server (`sender_lists.py`, schema): plain address/domain/rule-id/file-type patterns, no control or invisible characters. Applied to typed input, **every value a card sends back on a click**, and **settings read back from storage** (cleaned and saved back). Rule switches only accept rules the server actually listed. The server re-validates: malformed ids → 422, invalid list entries dropped, nothing unvalidated echoed back. |
 | **Trusted senders can't be forged** | The trusted list only applies when Gmail's own header says DMARC passed. Whole free-mail domains can't be trusted. The blocklist always wins. |
 | **Rendering** | All email- and server-derived text is HTML-escaped before it enters a card; the response shape is validated before rendering. |
@@ -348,8 +348,7 @@ Nothing to configure: the backend address is built in.
 
 **Today (before the Marketplace listing)** the add-on runs as a test deployment of the maintainer's Apps Script
 project. The backend only accepts requests from that project (it checks the identity token's *audience*), so a
-copy of the code in someone else's Apps Script project is rejected until the maintainer adds that project's ID
-(see below).
+copy of the code in someone else's Apps Script project is rejected unless the maintainer allows that project.
 
 ### Try it
 
@@ -369,62 +368,9 @@ VirusTotal). Mail sent from Gmail always passes SPF/DKIM/DMARC, so the authentic
 genuinely spoofed mail. To see the display-name and Reply-To rules, set the sending account's name to an
 email address (e.g. `service@paypal.com`) or a Reply-To on another domain in Gmail's "Send mail as" settings.
 
-### For the maintainer: operating the backend
+### Adding a rule
 
-There is one server. Everything below is done by the maintainer, never by users.
-
-**Server prerequisites:** an AWS EC2 instance (Ubuntu; t3.small is enough) with a static IP, a security group
-allowing **443** (and 22 for SSH), Docker (`sudo apt-get install -y docker.io docker-compose-v2 && sudo usermod
--aG docker ubuntu`), and an instance IAM role allowed `secretsmanager:GetSecretValue` on the secret that holds the
-VirusTotal API key (key/value, field `VT_API_KEY`).
-
-**Deploy or update** (from the repository root, Git Bash / Linux / macOS; `SSH_KEY` points to the instance's key
-file):
-
-```bash
-# first deploy: pass the settings once (kept in the server's .env afterwards)
-ALLOWED_EMAILS='*' \
-ALLOWED_AUDIENCES=<the add-on project's OAuth client id> \
-VT_SECRET_ARN=<arn of the Secrets Manager secret> \
-scripts/deploy.sh <ec2-public-dns> [domain]
-
-# every later update
-scripts/deploy.sh <ec2-public-dns>
-```
-
-The script copies `backend/`, writes the server's `.env`, builds the image (CPU-only PyTorch and the ML model are
-baked in at a pinned commit), starts Caddy and the API, and waits for `https://<domain>/health`. Without a domain
-it uses `<ip-with-dashes>.sslip.io`, which gets a real Let's Encrypt certificate.
-
-**The add-on project** (maintainer's Apps Script project): the eight files in `addon/` (`appsscript.json`,
-`Code.gs`, `Report.gs`, `Cards.gs`, `Settings.gs`, `Mailbox.gs`, `Privacy.gs`, `Validation.gs`). `BACKEND_URL` in
-`Code.gs` and `urlFetchWhitelist` in `appsscript.json` point to the server. Running `debugIdentityToken` once in the
-editor logs the project's OAuth client id, the value for `ALLOWED_AUDIENCES`. To let another Apps Script project
-(for example a reviewer's copy) use the backend, add its client id to `ALLOWED_AUDIENCES` (comma-separated) and
-redeploy.
-
-**Running it:**
-- **Configuration** (`.env` on the server): `DOMAIN`, `ALLOWED_EMAILS`, `ALLOWED_AUDIENCES`, `LOG_LEVEL`,
-  `VT_API_KEY_SECRET_ARN`. None of them is secret; the VirusTotal key itself stays in Secrets Manager.
-- **Logs:** `docker compose logs api`. The startup log says where the VirusTotal key came from.
-- **Data refresh:** `scripts/update_tranco.py` (popular-domain list) and `scripts/update_rdap_bootstrap.py` (IANA's
-  TLD → registry map), then redeploy.
-- **Rollback:** the Secrets Manager migration kept a documented rollback path (config-only, previous image tag,
-  previous code snapshot).
-
-### Develop and test locally
-
-```bash
-cd backend
-python -m venv .venv && .venv/Scripts/activate      # Linux/macOS: source .venv/bin/activate
-pip install -r requirements-dev.txt
-pytest                                               # 209 tests, no network, no PyTorch needed
-cd .. && node addon/tests/privacy.test.js && node addon/tests/validation.test.js
-```
-
-Running the server locally (`uvicorn app.main:app --reload` with a `.env` from `.env.example`) works
-without PyTorch: `ml_phishing_text` is then listed in `rulesFailed`. Adding a rule: one file in
-`app/rules/` with a `Rule` subclass (`id`, `title`, `description`, `category`, `default_score`,
+One file in `backend/app/rules/` with a `Rule` subclass (`id`, `title`, `description`, `category`, `default_score`,
 `evaluate()`); see [`backend/README.md`](backend/README.md).
 
 ---
@@ -437,7 +383,7 @@ The choices that shaped the product most, and why:
 |---|---|
 | **Additive, explainable rules; ML as one capped signal** | Every point is a reason the user can check; a model alone false-alarms on routine mail and can't explain itself |
 | **Google identity tokens, audience-checked** | No shared secret to leak or rotate; restricts the API to this add-on while allowing any of its users |
-| **Facts in the add-on, judgment in the backend** | Testable, changeable without redeploying the add-on |
+| **Facts in the add-on, judgment in the backend** | One place for all detection logic, changeable without redeploying the add-on |
 | **Trust only Gmail's own authentication header** | Senders can include fake `dmarc=pass` headers |
 | **Popularity from Tranco, not a brand list** | Covers any well-known site; measurable false-alarm rate |
 | **Outside services: identifiers only, capped, cached; "can't check" ≠ "clean"** | Privacy and the free API's 4/min limit; an outage must not make phishing look safe |
@@ -480,7 +426,6 @@ addon/                      Gmail add-on (Apps Script; paste into script.google.
   Mailbox.gs                new_sender fact: two Gmail searches, only the conclusion is sent
   Cards.gs                  result card: gauge image, findings, buttons, details
   Settings.gs               settings screen, lists, rule switches, click handlers
-  tests/                    privacy.test.js, validation.test.js (run with node)
 backend/                    FastAPI service
   app/main.py               endpoints: /analyze, /rules, /gauge, /health
   app/security.py           Google identity-token verification, body size limit
@@ -491,7 +436,6 @@ backend/                    FastAPI service
   app/rules/                22 rules, one per file
   config/rules.yaml         points, thresholds, parameters, score groups
   data/                     Tranco top-1M list, IANA RDAP bootstrap
-  tests/                    209 pytest tests
   Dockerfile, docker-compose.yml, Caddyfile, .env.example, README.md
 scripts/                    deploy.sh, update_tranco.py, update_rdap_bootstrap.py
 README.md                   this file

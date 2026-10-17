@@ -35,14 +35,12 @@ data/                Tranco top-1M popular domains (refresh: scripts/update_tran
 ```bash
 python -m venv .venv
 .venv/Scripts/activate            # Windows (Linux/macOS: source .venv/bin/activate)
-pip install -r requirements-dev.txt
+pip install -r requirements.txt
 cp .env.example .env              # set ALLOWED_AUDIENCES, ALLOWED_EMAILS (VT_API_KEY optional)
-pytest
 uvicorn app.main:app --reload
 ```
 
-Tests replace the ML model with a stub, so they don't need PyTorch. Running the server locally without
-PyTorch and the model files works too: `ml_phishing_text` is then listed in `rulesFailed`. The Docker
+Running the server locally without PyTorch and the model files works: `ml_phishing_text` is then listed in `rulesFailed`. The Docker
 image installs CPU-only PyTorch and bakes in the model at a pinned commit (see `Dockerfile`).
 
 ## User preferences

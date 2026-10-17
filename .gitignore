@@ -12,3 +12,8 @@ docs/
 
 # Session handoff for Claude (hosts, ARNs, account details): kept locally, not published (user's decision, 2026-10-17)
 CLAUDE.md
+
+# Tests: kept locally for development, not published (user's decision, 2026-10-17)
+backend/tests/
+addon/tests/
+backend/requirements-dev.txt
