@@ -14,12 +14,13 @@ It consists of two parts that you'll find in this repository:
 | **Gmail add-on** | Apps Script (Google Workspace add-on). Collects facts about the open email, masks sensitive data, sends a report, renders the verdict card and the user's settings | [`addon/`](addon/) |
 | **Analysis backend** | Python / FastAPI service on AWS EC2 behind Caddy (HTTPS). Verifies the caller's Google identity, validates the report, runs 22 detection rules, returns a score, verdict and evidence | [`backend/`](backend/) |
 
+
+
 <img width="365" height="681" alt="image" src="https://github.com/user-attachments/assets/273514ae-4385-404f-81fc-c5efde0bb10d" />
 
 
-> **Reviewer shortcut.** If you have ten minutes: read [What it does and why](#1-what-it-does-and-why),
-> skim [Architecture](#2-architecture) and [Security design](#5-security-design), and look at
-> [Key decisions](#8-key-decisions-and-trade-offs). Every rule is explained in [`RULES.md`](RULES.md).
+
+
 
 ---
 
