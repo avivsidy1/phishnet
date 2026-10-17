@@ -1,0 +1,22 @@
+{
+	# HTTPS only: the add-on never uses plain HTTP, so there is no port 80 listener or redirect.
+	auto_https disable_redirects
+}
+
+{$DOMAIN} {
+	tls {
+		issuer acme {
+			# Prove domain ownership over port 443 (TLS-ALPN-01) instead of port 80.
+			disable_http_challenge
+		}
+	}
+	request_body {
+		max_size 1MB
+	}
+	reverse_proxy api:8000
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+}

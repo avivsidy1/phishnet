@@ -1,0 +1,3 @@
+# Keep Unix line endings in the repository (deploy.sh and config files run on Linux)
+* text=auto eol=lf
+*.gz binary

@@ -1,0 +1,31 @@
+# Production-style deployment for a single EC2 instance:
+# Caddy terminates HTTPS (automatic Let's Encrypt certificates) and proxies to the API.
+# The API container is not exposed to the internet directly.
+services:
+  api:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    expose:
+      - "8000"
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,96 @@
+# Rule configuration.
+#
+# Every rule in app/rules/ is loaded automatically with the defaults defined in its file.
+# Use this file to tune them without touching code:
+#   enabled: false      -> turn a rule off
+#   score: <0-100>      -> points the rule adds when it matches
+#   params: {...}       -> override rule-specific settings (lists, thresholds)
+# Unknown rule ids are rejected at startup, so typos can't silently disable anything.
+
+verdict:
+  suspicious_threshold: 30   # score >= 30 -> suspicious
+  malicious_threshold: 70    # score >= 70 -> malicious
+
+# Only Authentication-Results headers stamped by these servers are trusted.
+# Senders can add their own fake "dmarc=pass" headers; Gmail's own is from mx.google.com.
+trusted_auth_servers:
+  - mx.google.com
+
+# Rules that react to the same evidence. If two or more rules of a group fire, only the highest
+# score counts; the others are still shown as reasons, with 0 points.
+score_groups:
+  wording: [ml_phishing_text, credential_request, urgency_language]
+
+rules:
+  # Authentication
+  dmarc_fail:           { enabled: true, score: 30 }
+  spf_fail:             { enabled: true, score: 15 }
+  dkim_fail:            { enabled: true, score: 15 }
+
+  # Sender identity
+  display_name_spoof:   { enabled: true, score: 25 }
+  reply_to_mismatch:    { enabled: true, score: 15 }
+  user_blocklist:       { enabled: true, score: 100 }  # the user's own blocklist (add-on settings)
+  # No two-way history > 30 days (the add-on searches the mailbox). Never fires for an authenticated
+  # (DMARC pass) sender on a Tranco top-N domain, except free-mail domains.
+  new_sender:
+    enabled: true
+    score: 10
+    params:
+      popular_top_n: 10000
+
+  # Domains
+  lookalike_domain:     { enabled: true, score: 35 }
+  # X.Y.com with X a Tranco top-10k site (label or whole domain) and Y not in the top 10k.
+  subdomain_brand:      { enabled: true, score: 30 }
+  punycode_domain:      { enabled: true, score: 20 }
+  suspicious_tld:       { enabled: true, score: 10 }
+  # Registration date from RDAP (the TLD's registry; no key). Tranco top 1M skipped.
+  new_domain:
+    enabled: true
+    score: 30
+    params:
+      max_age_days: 7
+      max_lookups_per_email: 5
+  # Calls VirusTotal (needs VT_API_KEY in .env). Never sends the Tranco top 5k; caches answers.
+  virustotal_domain:
+    enabled: true
+    score: 65
+    params:
+      skip_top_n: 5000
+      min_malicious: 2          # one vendor alone is not enough: even google.com has one
+      max_lookups_per_email: 3  # public API: 4 requests/minute, 500/day in total
+      cache_hours: 24
+      not_found_cache_hours: 6
+
+  # Links
+  link_text_mismatch:   { enabled: true, score: 30 }
+  ip_address_url:       { enabled: true, score: 20 }
+  url_shortener:        { enabled: true, score: 10 }
+
+  # Attachments
+  dangerous_attachment: { enabled: true, score: 35 }
+  # Attachment SHA-256 looked up on VirusTotal (the file is never uploaded). Shares the domain rule's
+  # client and 4/min limit. 70 = Malicious on its own, hence 3 engines, not 2.
+  virustotal_file:
+    enabled: true
+    score: 70
+    params:
+      min_malicious: 3
+      max_lookups_per_email: 3
+
+  # Content
+  embedded_form:        { enabled: true, score: 25 }
+  credential_request:   { enabled: true, score: 15 }
+  urgency_language:
+    enabled: true
+    score: 10
+    params:
+      min_matches: 2
+
+  # Machine learning (model baked into the Docker image)
+  ml_phishing_text:
+    enabled: true
+    score: 20
+    params:
+      threshold: 0.9985 # P(phishing) needed to fire; the model is often overconfident
