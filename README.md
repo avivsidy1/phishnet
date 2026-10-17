@@ -34,7 +34,7 @@ It consists of two parts that you'll find in this repository:
 
 > **Reviewer shortcut.** If you have ten minutes: read [What it does and why](#1-what-it-does-and-why),
 > skim [Architecture](#2-architecture) and [Security design](#5-security-design), and look at
-> [Key decisions](#9-key-decisions-and-trade-offs). Every rule is explained in [`RULES.md`](RULES.md).
+> [Key decisions](#8-key-decisions-and-trade-offs). Every rule is explained in [`RULES.md`](RULES.md).
 
 ---
 
@@ -46,11 +46,10 @@ It consists of two parts that you'll find in this repository:
 4. [The user experience](#4-the-user-experience)
 5. [Security design](#5-security-design)
 6. [Privacy: what leaves the mailbox](#6-privacy-what-leaves-the-mailbox)
-7. [Evaluation: how well it works](#7-evaluation-how-well-it-works)
-8. [Setup and running](#8-setup-and-running)
-9. [Key decisions and trade-offs](#9-key-decisions-and-trade-offs)
-10. [What's next](#10-whats-next)
-11. [Repository layout](#11-repository-layout)
+7. [Setup and running](#7-setup-and-running)
+8. [Key decisions and trade-offs](#8-key-decisions-and-trade-offs)
+9. [What's next](#9-whats-next)
+10. [Repository layout](#10-repository-layout)
 
 ---
 
@@ -330,64 +329,29 @@ service can be switched off in Settings.
 
 ---
 
-## 7. Evaluation: how well it works
+## 7. Setup and running
 
-Numbers from measurements made during development. Each comes with its caveat.
+**PhishNet is a hosted service.** There is **one backend**, run by the maintainer on a single AWS EC2 server.
+Users don't run any server: they only install the Gmail add-on, which already points at that backend.
 
-| What | Result | Caveat |
-|---|---|---|
-| **ML rule**, 1,000 held-out emails (500/500) | 98.8% correct at the production threshold (0.9985), 0 false alarms | Held-out split of the model's own dataset (old Enron mail and spam): in-distribution, so optimistic. On 12 modern emails it scored 9/12 and false-alarmed on a real password reset and shipping notice, which is why it's capped at 20 points and grouped. |
-| **`lookalike_domain`** false alarms | 0.024% on 50,000 real lower-ranked domains, all 16 test attacks caught | Tuning set. |
-| **Typosquat benchmark**, 1,600 domains | Our rule: 201/800 fakes caught, **0/800 false alarms** (precise but narrow: character swaps only) | Fakes were generated. A Hugging Face URL classifier scored 50% (it judged URL formatting, not domains) and was rejected. An edit-distance baseline caught 787/800 but false-alarmed on 4.2% of obscure real domains, so it wasn't adopted. |
-| **VirusTotal**, live | 4/4 standalone phishing domains from that day's OpenPhish feed flagged by 4–11 vendors; google.com has 1 vendor (why 2 are required) | Phishing hosted on shared platforms has no domain-level verdict. |
-| **RDAP**, live | A phishing domain registered 2 days earlier caught by `new_domain` that VirusTotal (1 vendor) missed | TLDs without RDAP (`.il`, `.de`, `.io`…) are skipped. |
+### For users: install the add-on
 
-**Automated tests:** **209 backend tests** (pytest; outside services are replaced by fakes, so tests never
-reach VirusTotal, registries or AWS) and **24 add-on tests** (Node) for masking and validation.
+The add-on is built to be installed from Google Workspace Marketplace (planned; listing requires Google's
+review, see [Privacy](#6-privacy-what-leaves-the-mailbox) for the mailbox permission). Once installed:
 
----
+1. Open Gmail and open any email.
+2. Open **PhishNet** in the side panel and approve the permissions it asks for the first time.
+3. The verdict appears for every email you open. Your settings (rule switches, trusted and blocked senders,
+   trusted file types) are under **Settings** in the add-on's menu.
 
-## 8. Setup and running
+Nothing to configure: the backend address is built in.
 
-### Prerequisites
+**Today (before the Marketplace listing)** the add-on runs as a test deployment of the maintainer's Apps Script
+project. The backend only accepts requests from that project (it checks the identity token's *audience*), so a
+copy of the code in someone else's Apps Script project is rejected until the maintainer adds that project's ID
+(see below).
 
-- An AWS EC2 instance (Ubuntu; t3.small is enough) with a static IP, a security group allowing **443**
-  (and 22 for SSH), and Docker:
-  `sudo apt-get install -y docker.io docker-compose-v2 && sudo usermod -aG docker ubuntu`
-- A Google account, and access to [script.google.com](https://script.google.com).
-- Optional: a free VirusTotal API key, stored in AWS Secrets Manager (key/value, field `VT_API_KEY`), and an
-  instance IAM role allowed `secretsmanager:GetSecretValue` on that secret.
-
-### 1. Deploy the backend
-
-From the repository root (Git Bash, Linux or macOS). Set `SSH_KEY` to your instance's key file (the
-script's default is `~/Downloads/instance-key.pem`) and `SSH_USER` if it isn't `ubuntu`:
-
-```bash
-ALLOWED_EMAILS='*' \
-ALLOWED_AUDIENCES=<the add-on's OAuth client id, see step 2.3> \
-VT_SECRET_ARN=<arn of the Secrets Manager secret, optional> \
-scripts/deploy.sh <ec2-public-dns> [domain]
-```
-
-The script copies `backend/`, writes the server's `.env` (kept on later runs), builds the image (CPU-only
-PyTorch and the ML model are baked in at a pinned commit), starts Caddy and the API, and waits for
-`https://<domain>/health`. Without a domain it uses `<ip-with-dashes>.sslip.io`, which gets a real Let's
-Encrypt certificate. Re-running `scripts/deploy.sh <host>` redeploys with the same settings.
-
-### 2. Install the add-on
-
-1. Create a project at [script.google.com](https://script.google.com). In Project Settings, enable
-   "Show appsscript.json".
-2. Copy in the eight files from `addon/`: `appsscript.json`, `Code.gs`, `Report.gs`, `Cards.gs`,
-   `Settings.gs`, `Mailbox.gs`, `Privacy.gs`, `Validation.gs`. Set `BACKEND_URL` in `Code.gs` and the
-   matching `urlFetchWhitelist` entry in `appsscript.json`. The manifest enables the Gmail advanced service;
-   if Google reports the Gmail API is disabled, enable it in the linked Cloud project.
-3. Run `debugIdentityToken` from the editor and approve the permissions. It logs the value for
-   `ALLOWED_AUDIENCES` (never the token itself).
-4. **Deploy → Test deployments → Install.** Open Gmail, open an email, and open PhishNet in the side panel.
-
-### 3. Try it
+### Try it
 
 Send these from a second Gmail account to the one with the add-on. Insert links with **Ctrl+K** ("Text" is
 what's shown, "Web address" is where it goes), and don't click them.
@@ -405,7 +369,50 @@ VirusTotal). Mail sent from Gmail always passes SPF/DKIM/DMARC, so the authentic
 genuinely spoofed mail. To see the display-name and Reply-To rules, set the sending account's name to an
 email address (e.g. `service@paypal.com`) or a Reply-To on another domain in Gmail's "Send mail as" settings.
 
-### 4. Develop and test locally
+### For the maintainer: operating the backend
+
+There is one server. Everything below is done by the maintainer, never by users.
+
+**Server prerequisites:** an AWS EC2 instance (Ubuntu; t3.small is enough) with a static IP, a security group
+allowing **443** (and 22 for SSH), Docker (`sudo apt-get install -y docker.io docker-compose-v2 && sudo usermod
+-aG docker ubuntu`), and an instance IAM role allowed `secretsmanager:GetSecretValue` on the secret that holds the
+VirusTotal API key (key/value, field `VT_API_KEY`).
+
+**Deploy or update** (from the repository root, Git Bash / Linux / macOS; `SSH_KEY` points to the instance's key
+file):
+
+```bash
+# first deploy: pass the settings once (kept in the server's .env afterwards)
+ALLOWED_EMAILS='*' \
+ALLOWED_AUDIENCES=<the add-on project's OAuth client id> \
+VT_SECRET_ARN=<arn of the Secrets Manager secret> \
+scripts/deploy.sh <ec2-public-dns> [domain]
+
+# every later update
+scripts/deploy.sh <ec2-public-dns>
+```
+
+The script copies `backend/`, writes the server's `.env`, builds the image (CPU-only PyTorch and the ML model are
+baked in at a pinned commit), starts Caddy and the API, and waits for `https://<domain>/health`. Without a domain
+it uses `<ip-with-dashes>.sslip.io`, which gets a real Let's Encrypt certificate.
+
+**The add-on project** (maintainer's Apps Script project): the eight files in `addon/` (`appsscript.json`,
+`Code.gs`, `Report.gs`, `Cards.gs`, `Settings.gs`, `Mailbox.gs`, `Privacy.gs`, `Validation.gs`). `BACKEND_URL` in
+`Code.gs` and `urlFetchWhitelist` in `appsscript.json` point to the server. Running `debugIdentityToken` once in the
+editor logs the project's OAuth client id, the value for `ALLOWED_AUDIENCES`. To let another Apps Script project
+(for example a reviewer's copy) use the backend, add its client id to `ALLOWED_AUDIENCES` (comma-separated) and
+redeploy.
+
+**Running it:**
+- **Configuration** (`.env` on the server): `DOMAIN`, `ALLOWED_EMAILS`, `ALLOWED_AUDIENCES`, `LOG_LEVEL`,
+  `VT_API_KEY_SECRET_ARN`. None of them is secret; the VirusTotal key itself stays in Secrets Manager.
+- **Logs:** `docker compose logs api`. The startup log says where the VirusTotal key came from.
+- **Data refresh:** `scripts/update_tranco.py` (popular-domain list) and `scripts/update_rdap_bootstrap.py` (IANA's
+  TLD → registry map), then redeploy.
+- **Rollback:** the Secrets Manager migration kept a documented rollback path (config-only, previous image tag,
+  previous code snapshot).
+
+### Develop and test locally
 
 ```bash
 cd backend
@@ -420,19 +427,9 @@ without PyTorch: `ml_phishing_text` is then listed in `rulesFailed`. Adding a ru
 `app/rules/` with a `Rule` subclass (`id`, `title`, `description`, `category`, `default_score`,
 `evaluate()`); see [`backend/README.md`](backend/README.md).
 
-### Operations
-
-- **Configuration** (`.env` on the server): `DOMAIN`, `ALLOWED_EMAILS`, `ALLOWED_AUDIENCES`, `LOG_LEVEL`,
-  `VT_API_KEY_SECRET_ARN`. None of them is secret.
-- **Logs:** `docker compose logs api`. The startup log says where the VirusTotal key came from.
-- **Data refresh:** `scripts/update_tranco.py` (popular-domain list) and `scripts/update_rdap_bootstrap.py`
-  (IANA's TLD → registry map).
-- **Rollback:** the Secrets Manager migration kept a documented rollback path (config-only, previous image
-  tag, previous code snapshot).
-
 ---
 
-## 9. Key decisions and trade-offs
+## 8. Key decisions and trade-offs
 
 The choices that shaped the product most, and why:
 
@@ -451,7 +448,7 @@ The choices that shaped the product most, and why:
 
 ---
 
-## 10. What's next
+## 9. What's next
 
 1. **Intelligence across all users.** Every user's scans together give a view no single mailbox has: trends,
    domains and senders behind ongoing phishing campaigns, and the same link, attachment or email template
@@ -471,7 +468,7 @@ The choices that shaped the product most, and why:
 
 ---
 
-## 11. Repository layout
+## 10. Repository layout
 
 ```
 addon/                      Gmail add-on (Apps Script; paste into script.google.com)
