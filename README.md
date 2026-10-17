@@ -14,23 +14,8 @@ It consists of two parts that you'll find in this repository:
 | **Gmail add-on** | Apps Script (Google Workspace add-on). Collects facts about the open email, masks sensitive data, sends a report, renders the verdict card and the user's settings | [`addon/`](addon/) |
 | **Analysis backend** | Python / FastAPI service on AWS EC2 behind Caddy (HTTPS). Verifies the caller's Google identity, validates the report, runs 22 detection rules, returns a score, verdict and evidence | [`backend/`](backend/) |
 
-```
-┌─────────────────────────────────────────────┐
-│        ◯ 45 / 100     ⚠ SUSPICIOUS          │   animated ring + verdict (one image)
-│                       Score between 30–69    │
-│ Be careful: 3 warning signs found. Verify   │
-│ the sender through another channel.          │
-│                                              │
-│ Show why (3)                                 │   collapsed until tapped
-│   Link shows one address but opens another   │
-│   +30  shows "www.paypal.com/signin" but     │
-│        opens secure-login.top                │
-│   Recently registered domain  +30 …          │
-│                                              │
-│ [Trust sender] [Block sender] [Settings]     │
-│ Details ▸  rules checked, what was masked    │
-└─────────────────────────────────────────────┘
-```
+<img width="365" height="681" alt="image" src="https://github.com/user-attachments/assets/273514ae-4385-404f-81fc-c5efde0bb10d" />
+
 
 > **Reviewer shortcut.** If you have ten minutes: read [What it does and why](#1-what-it-does-and-why),
 > skim [Architecture](#2-architecture) and [Security design](#5-security-design), and look at
